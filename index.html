@@ -217,7 +217,7 @@ function PaymentForm({qty, total, onBack}) {
     } catch(err) { console.warn("EmailJS:", err); }
 
     // 3. Rediriger vers Stripe après envoi email
-    const base = "https://buy.stripe.com/4gMaEXdcd7Qs4dGbUZ14400";
+    const base = "https://buy.stripe.com/test_00w3cvfr0aVqc1d7Hw8AE00";
     const params = new URLSearchParams({
       prefilled_email: form.email,
       quantity: String(qty),
