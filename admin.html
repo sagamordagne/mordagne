@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard — La Bête de Mordagne</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#0a0804; font-family: Georgia, serif; color:#f0e6d0; }
+    input { font-family: Georgia, serif; }
+    button { font-family: Georgia, serif; cursor:pointer; }
+    ::-webkit-scrollbar { width:5px; }
+    ::-webkit-scrollbar-track { background:#0a0804; }
+    ::-webkit-scrollbar-thumb { background:#3a2c1a; border-radius:3px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const PRICE = 14.5;
+const PWD = "mordagne2026";
+
+// ── Storage (localStorage) ─────────────────────────────
+const storage = {
+  get: async (key) => { try { const v=localStorage.getItem(key); return v?{value:v}:null; } catch { return null; } },
+  set: async (key,val) => { try { localStorage.setItem(key,val); return true; } catch { return null; } },
+};
+
+// ── Helpers ────────────────────────────────────────────
+const GOLD = "#c0976a";
+const GOLD_L = "#e8c98a";
+const BG2 = "rgba(255,255,255,0.04)";
+const BORDER = "rgba(192,151,106,0.22)";
+
+function card(children, style={}) {
+  return <div style={{background:BG2,border:`1px solid ${BORDER}`,borderRadius:"12px",padding:"20px",...style}}>{children}</div>;
+}
+
+function StatBox({value, label, sub, color="#e8c98a"}) {
+  return (
+    <div style={{background:BG2,border:`1px solid ${BORDER}`,borderRadius:"12px",padding:"18px",textAlign:"center"}}>
+      <div style={{fontSize:"2rem",fontWeight:"700",color,fontFamily:"Georgia,serif"}}>{value}</div>
+      <div style={{fontSize:"0.65rem",color:"#a89070",textTransform:"uppercase",letterSpacing:"0.1em",marginTop:"4px"}}>{label}</div>
+      {sub && <div style={{fontSize:"0.7rem",color:"#6a5a45",marginTop:"3px"}}>{sub}</div>}
+    </div>
+  );
+}
+
+// ── Chart Component ────────────────────────────────────
+function SalesChart({orders}) {
+  const canvasRef = React.useRef(null);
+  const chartRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!canvasRef.current || orders.length === 0) return;
+
+    // Group orders by date
+    const byDate = {};
+    orders.forEach(o => {
+      const d = o.date || "?";
+      byDate[d] = (byDate[d] || 0) + Number(o.qty || 1);
+    });
+
+    // Sort dates
+    const sorted = Object.keys(byDate).sort((a,b) => {
+      const pa = a.split("/").reverse().join("-");
+      const pb = b.split("/").reverse().join("-");
+      return pa.localeCompare(pb);
+    });
+
+    // Cumulative
+    let cum = 0;
+    const cumData = sorted.map(d => { cum += byDate[d]; return cum; });
+
+    if (chartRef.current) chartRef.current.destroy();
+
+    chartRef.current = new Chart(canvasRef.current, {
+      type: "line",
+      data: {
+        labels: sorted,
+        datasets: [
+          {
+            label: "Exemplaires cumulés",
+            data: cumData,
+            borderColor: "#c0976a",
+            backgroundColor: "rgba(192,151,106,0.12)",
+            borderWidth: 2,
+            pointBackgroundColor: "#e8c98a",
+            pointRadius: 5,
+            tension: 0.3,
+            fill: true,
+          },
+          {
+            label: "Ventes du jour",
+            data: sorted.map(d => byDate[d]),
+            borderColor: "#8fca8f",
+            backgroundColor: "rgba(143,202,143,0.08)",
+            borderWidth: 2,
+            pointBackgroundColor: "#8fca8f",
+            pointRadius: 4,
+            tension: 0.3,
+            fill: true,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            labels: { color: "#a89070", font: { family: "Georgia", size: 12 } }
+          },
+          tooltip: {
+            backgroundColor: "#1a1208",
+            borderColor: "rgba(192,151,106,0.3)",
+            borderWidth: 1,
+            titleColor: "#e8c98a",
+            bodyColor: "#c8b898",
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: "#7a6a55", font: { size: 11 } },
+            grid: { color: "rgba(192,151,106,0.08)" },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { color: "#7a6a55", font: { size: 11 }, stepSize: 1 },
+            grid: { color: "rgba(192,151,106,0.08)" },
+          }
+        }
+      }
+    });
+    return () => { if (chartRef.current) chartRef.current.destroy(); };
+  }, [orders]);
+
+  if (orders.length === 0) return (
+    <div style={{textAlign:"center",padding:"40px",color:"#5a4a35",fontStyle:"italic",fontSize:"0.88rem"}}>
+      Aucune donnée à afficher pour le moment
+    </div>
+  );
+
+  return <canvas ref={canvasRef} style={{width:"100%",height:"260px"}}/>;
+}
+
+// ── Order Table ────────────────────────────────────────
+function OrderTable({orders, onDelete}) {
+  const [search, setSearch] = React.useState("");
+  const [sort, setSort] = React.useState({key:"date",dir:-1});
+
+  const filtered = orders.filter(o =>
+    [o.prenom,o.nom,o.email,o.tel,o.adresse].join(" ").toLowerCase().includes(search.toLowerCase())
+  );
+
+  const sorted = [...filtered].sort((a,b) => {
+    let va = a[sort.key]??"", vb = b[sort.key]??"";
+    if (sort.key === "qty" || sort.key === "total") { va=Number(va); vb=Number(vb); }
+    return va < vb ? -sort.dir : va > vb ? sort.dir : 0;
+  });
+
+  const th = (label, key) => (
+    <th onClick={() => setSort(s => s.key===key ? {key,dir:-s.dir} : {key,dir:1})}
+      style={{padding:"8px 10px",textAlign:"left",color:GOLD,fontWeight:"600",fontSize:"0.7rem",
+        textTransform:"uppercase",letterSpacing:"0.08em",cursor:"pointer",whiteSpace:"nowrap",
+        userSelect:"none",borderBottom:`1px solid ${BORDER}`}}>
+      {label} {sort.key===key ? (sort.dir===1?"↑":"↓") : ""}
+    </th>
+  );
+
+  return (
+    <div>
+      {/* Search */}
+      <div style={{marginBottom:"14px"}}>
+        <input
+          value={search} onChange={e=>setSearch(e.target.value)}
+          placeholder="Rechercher un nom, email, adresse…"
+          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,
+            borderRadius:"8px",padding:"10px 14px",color:"#f0e6d0",fontSize:"0.85rem",outline:"none"}}
+        />
+      </div>
+
+      {sorted.length === 0
+        ? <p style={{color:"#5a4a35",textAlign:"center",fontStyle:"italic",padding:"20px"}}>Aucune commande trouvée.</p>
+        : <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.78rem",color:"#c8b898"}}>
+            <thead><tr>
+              {th("Date","date")}
+              {th("Prénom","prenom")}
+              {th("Nom","nom")}
+              {th("Email","email")}
+              {th("Tél","tel")}
+              {th("Adresse","adresse")}
+              {th("Qté","qty")}
+              {th("Total","total")}
+              <th style={{padding:"8px 10px",borderBottom:`1px solid ${BORDER}`}}></th>
+            </tr></thead>
+            <tbody>
+              {sorted.map((o,i) => (
+                <tr key={i} style={{borderBottom:"1px solid rgba(255,255,255,0.04)",transition:"background 0.15s"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="rgba(192,151,106,0.05)"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <td style={{padding:"9px 10px",whiteSpace:"nowrap"}}>{o.date}</td>
+                  <td style={{padding:"9px 10px",whiteSpace:"nowrap"}}>{o.prenom}</td>
+                  <td style={{padding:"9px 10px",whiteSpace:"nowrap"}}>{o.nom}</td>
+                  <td style={{padding:"9px 10px"}}><a href={`mailto:${o.email}`} style={{color:GOLD,textDecoration:"none"}}>{o.email}</a></td>
+                  <td style={{padding:"9px 10px",whiteSpace:"nowrap"}}>{o.tel}</td>
+                  <td style={{padding:"9px 10px",maxWidth:"160px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.adresse}</td>
+                  <td style={{padding:"9px 10px",textAlign:"center",color:GOLD_L,fontWeight:"600"}}>{o.qty}</td>
+                  <td style={{padding:"9px 10px",whiteSpace:"nowrap",color:GOLD_L,fontWeight:"600"}}>{(Number(o.qty)*PRICE).toFixed(2)} €</td>
+                  <td style={{padding:"9px 10px"}}>
+                    <button onClick={()=>onDelete(i)}
+                      style={{background:"none",border:"1px solid rgba(200,80,80,0.3)",borderRadius:"5px",
+                        padding:"3px 8px",color:"rgba(200,80,80,0.6)",fontSize:"0.65rem",cursor:"pointer"}}>
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  );
+}
+
+// ── Main App ───────────────────────────────────────────
+function App() {
+  const [pwd, setPwd] = React.useState("");
+  const [unlocked, setUnlocked] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [orders, setOrders] = React.useState([]);
+  const [tab, setTab] = React.useState("overview"); // overview | orders
+
+  React.useEffect(() => {
+    if (!unlocked) return;
+    (async () => {
+      try {
+        const r = await storage.get("orders");
+        if (r?.value) setOrders(JSON.parse(r.value));
+      } catch {}
+    })();
+  }, [unlocked]);
+
+  const handleLogin = () => {
+    if (pwd === PWD) { setUnlocked(true); setError(""); }
+    else setError("Mot de passe incorrect");
+  };
+
+  const handleDelete = async (idx) => {
+    if (!confirm("Supprimer cette commande ?")) return;
+    const updated = orders.filter((_,i) => i !== idx);
+    setOrders(updated);
+    await storage.set("orders", JSON.stringify(updated));
+  };
+
+  const exportCSV = () => {
+    const h = ["Date","Prénom","Nom","Email","Téléphone","Adresse","Quantité","Total €"];
+    const rows = orders.map(o => [o.date,o.prenom,o.nom,o.email,o.tel,`"${o.adresse}"`,o.qty,(Number(o.qty)*PRICE).toFixed(2)]);
+    const csv = [h,...rows].map(r=>r.join(";")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"}));
+    a.download = `commandes-mordagne-${new Date().toLocaleDateString("fr-FR").replace(/\//g,"-")}.csv`;
+    a.click();
+  };
+
+  const totalQty = orders.reduce((s,o) => s+Number(o.qty||1), 0);
+  const totalRev = orders.reduce((s,o) => s+Number(o.qty||1)*PRICE, 0);
+  const todayStr = new Date().toLocaleDateString("fr-FR");
+  const todayOrders = orders.filter(o => o.date === todayStr);
+  const todayQty = todayOrders.reduce((s,o) => s+Number(o.qty||1), 0);
+
+  // Progress toward a goal (e.g. 100 books)
+  const GOAL = 100;
+  const progress = Math.min(100, Math.round(totalQty / GOAL * 100));
+
+  // ── LOGIN ──
+  if (!unlocked) return (
+    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#0a0804,#1a1208)",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}}>
+      <div style={{background:BG2,border:`1px solid ${BORDER}`,borderRadius:"16px",padding:"40px 36px",maxWidth:"360px",width:"100%",textAlign:"center"}}>
+        <div style={{fontSize:"0.6rem",color:"#6a5a45",letterSpacing:"0.2em",textTransform:"uppercase",marginBottom:"6px"}}>La Bête de Mordagne</div>
+        <div style={{fontSize:"1.6rem",color:GOLD_L,fontWeight:"700",marginBottom:"4px"}}>Dashboard</div>
+        <div style={{fontSize:"0.72rem",color:"#5a4a35",fontStyle:"italic",marginBottom:"28px"}}>Espace auteur privé</div>
+
+        <div style={{width:"40px",height:"1px",background:`rgba(192,151,106,0.3)`,margin:"0 auto 24px"}}/>
+
+        <input
+          type="password" placeholder="Mot de passe" value={pwd}
+          onChange={e=>{setPwd(e.target.value);setError("");}}
+          onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,
+            borderRadius:"9px",padding:"13px 16px",color:"#f0e6d0",fontSize:"1rem",
+            outline:"none",textAlign:"center",letterSpacing:"0.1em",marginBottom:"12px"}}
+        />
+        {error && <div style={{color:"#e07070",fontSize:"0.75rem",marginBottom:"10px"}}>{error}</div>}
+        <button onClick={handleLogin}
+          style={{width:"100%",background:"linear-gradient(135deg,#c0976a,#a07848)",border:"none",
+            borderRadius:"9px",padding:"13px",color:"#0e0b07",fontSize:"0.95rem",fontWeight:"700"}}>
+          Entrer →
+        </button>
+        <div style={{marginTop:"20px"}}>
+          <a href="/" style={{fontSize:"0.7rem",color:"#3a2c1a",textDecoration:"none"}}>← Retour à la page de prévente</a>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── DASHBOARD ──
+  return (
+    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#0a0804,#1a1208)"}}>
+
+      {/* Header */}
+      <div style={{borderBottom:`1px solid ${BORDER}`,padding:"16px 28px",display:"flex",justifyContent:"space-between",alignItems:"center",background:"rgba(0,0,0,0.2)"}}>
+        <div>
+          <div style={{fontSize:"0.6rem",color:"#5a4a35",letterSpacing:"0.18em",textTransform:"uppercase"}}>La Bête de Mordagne · Tome I</div>
+          <div style={{fontSize:"1.2rem",color:GOLD_L,fontWeight:"700"}}>Dashboard prévente</div>
+        </div>
+        <div style={{display:"flex",gap:"10px",alignItems:"center"}}>
+          <button onClick={exportCSV}
+            style={{background:"rgba(192,151,106,0.12)",border:`1px solid ${BORDER}`,borderRadius:"8px",
+              padding:"8px 16px",color:GOLD,fontSize:"0.78rem"}}>
+            ⬇ Export CSV
+          </button>
+          <a href="/" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`,borderRadius:"8px",
+            padding:"8px 14px",color:"#7a6a55",fontSize:"0.75rem",textDecoration:"none"}}>
+            ← Page publique
+          </a>
+        </div>
+      </div>
+
+      <div style={{maxWidth:"1100px",margin:"0 auto",padding:"24px 20px"}}>
+
+        {/* Stat boxes */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:"12px",marginBottom:"24px"}}>
+          <StatBox value={orders.length} label="Commandes" sub="total"/>
+          <StatBox value={totalQty} label="Exemplaires" sub="réservés"/>
+          <StatBox value={totalRev.toFixed(2)+" €"} label="Revenus" sub="encaissés" color="#8fca8f"/>
+          <StatBox value={todayQty} label="Aujourd'hui" sub="exemplaires"/>
+          <StatBox value={progress+"%"} label={`Objectif ${GOAL} ex.`} sub={`${totalQty}/${GOAL}`} color={progress>=100?"#8fca8f":GOLD_L}/>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{marginBottom:"24px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.65rem",color:"#7a6a55",marginBottom:"6px"}}>
+            <span>Progression vers l'objectif de {GOAL} exemplaires</span>
+            <span>{progress}%</span>
+          </div>
+          <div style={{background:"rgba(255,255,255,0.06)",borderRadius:"6px",height:"8px",overflow:"hidden"}}>
+            <div style={{width:`${progress}%`,height:"100%",background:"linear-gradient(to right,#c0976a,#e8c98a)",borderRadius:"6px",transition:"width 0.6s ease"}}/>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{display:"flex",gap:"4px",marginBottom:"20px",background:"rgba(255,255,255,0.03)",borderRadius:"10px",padding:"4px",width:"fit-content"}}>
+          {[["overview","📈 Graphique"],["orders","📋 Commandes"]].map(([key,label])=>(
+            <button key={key} onClick={()=>setTab(key)}
+              style={{background:tab===key?"rgba(192,151,106,0.2)":"none",
+                border:tab===key?`1px solid ${BORDER}`:"1px solid transparent",
+                borderRadius:"8px",padding:"8px 18px",color:tab===key?GOLD_L:"#7a6a55",
+                fontSize:"0.8rem",transition:"all 0.2s"}}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        {tab === "overview" && (
+          <div style={{background:BG2,border:`1px solid ${BORDER}`,borderRadius:"12px",padding:"20px"}}>
+            <div style={{fontSize:"0.68rem",color:GOLD,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"16px"}}>
+              Ventes dans le temps
+            </div>
+            <div style={{height:"260px"}}>
+              <SalesChart orders={orders}/>
+            </div>
+          </div>
+        )}
+
+        {tab === "orders" && (
+          <div style={{background:BG2,border:`1px solid ${BORDER}`,borderRadius:"12px",padding:"20px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}}>
+              <div style={{fontSize:"0.68rem",color:GOLD,textTransform:"uppercase",letterSpacing:"0.1em"}}>
+                {orders.length} commande{orders.length!==1?"s":""} · {totalQty} exemplaire{totalQty!==1?"s":""}
+              </div>
+              <button onClick={exportCSV}
+                style={{background:"none",border:`1px solid ${BORDER}`,borderRadius:"7px",
+                  padding:"6px 14px",color:GOLD,fontSize:"0.75rem"}}>
+                ⬇ CSV
+              </button>
+            </div>
+            <OrderTable orders={orders} onDelete={handleDelete}/>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{marginTop:"30px",textAlign:"center",fontSize:"0.62rem",color:"#2a1c0a"}}>
+          Dashboard privé · La Bête de Mordagne · {new Date().getFullYear()}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
