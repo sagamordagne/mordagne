@@ -239,12 +239,14 @@ function App() {
 
   React.useEffect(() => {
     if (!unlocked) return;
-    (async () => {
-      try {
-        const r = await storage.get("orders");
-        if (r?.value) setOrders(JSON.parse(r.value));
-      } catch {}
-    })();
+    // Direct localStorage read — plus fiable que le wrapper async
+    try {
+      const raw = localStorage.getItem("orders");
+      console.log("Raw orders from localStorage:", raw);
+      if (raw) setOrders(JSON.parse(raw));
+    } catch(err) {
+      console.warn("Erreur lecture orders:", err);
+    }
   }, [unlocked]);
 
   const handleLogin = () => {
