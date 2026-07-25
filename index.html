@@ -172,166 +172,17 @@ function BookViewer() {
   );
 }
 
-function PaymentForm({qty, total, onBack}) {
-  const [form, setForm] = React.useState({nom:"",prenom:"",email:"",tel:"",adresse:""});
-  const [errors, setErrors] = React.useState({});
-
-  const validate = () => {
-    const e={};
-    if(!form.nom.trim()) e.nom="Requis";
-    if(!form.prenom.trim()) e.prenom="Requis";
-    if(!form.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) e.email="Email invalide";
-    if(!form.tel.trim()) e.tel="Requis";
-    if(!form.adresse.trim()) e.adresse="Requis";
-    return e;
-  };
-
-  const handlePay = async () => {
-    const e=validate(); if(Object.keys(e).length) return setErrors(e);
-
-    const date = new Date().toLocaleDateString("fr-FR");
-    const order = {...form, qty, total, date, status: "commandé"};
-
-    // 1. Sauvegarder localement
-    try {
-      const r = await storage.get("orders");
-      const ex = r?.value ? JSON.parse(r.value) : [];
-      await storage.set("orders", JSON.stringify([...ex, order]));
-    } catch(err) { console.warn("Storage:", err); }
-
-    // 2. Envoyer email — on attend avant de rediriger
-    try {
-      emailjs.init("xc_br9eKp8IUDvDzS");
-      const res = await emailjs.send("service_uzaoqc9", "template_vrie1py", {
-        to_email: form.email,
-        prenom: form.prenom,
-        nom: form.nom,
-        email: form.email,
-        tel: form.tel,
-        adresse: form.adresse,
-        qty: String(qty),
-        total: String(total),
-        date: date,
-      });
-      console.log("EmailJS OK:", res.status);
-    } catch(err) { console.warn("EmailJS:", err); }
-
-    // 3. Rediriger vers Stripe après envoi email
-    const base = "https://buy.stripe.com/4gMaEXdcd7Qs4dGbUZ14400";
-    const params = new URLSearchParams({
-      prefilled_email: form.email,
-      quantity: String(qty),
-      client_reference_id: `${form.prenom}-${form.nom}-${Date.now()}`,
-    });
-    window.location.href = `${base}?${params.toString()}`;
-  };
-
-  const fi = (key,label,type="text",opts={}) => (
-    <div style={{marginBottom:"12px"}}>
-      <label style={{display:"block",marginBottom:"4px",color:"#c0976a",fontSize:"0.72rem",letterSpacing:"0.07em",textTransform:"uppercase"}}>{label}</label>
-      {opts.ta
-        ? <textarea rows={2} value={form[key]} onChange={e=>{setForm({...form,[key]:e.target.value});setErrors({...errors,[key]:""});}} style={{width:"100%",boxSizing:"border-box",background:"rgba(255,255,255,0.05)",border:errors[key]?"1px solid #e07070":"1px solid rgba(192,151,106,0.28)",borderRadius:"8px",padding:"10px 12px",color:"#f0e6d0",fontSize:"0.88rem",outline:"none",resize:"none"}}/>
-        : <input type={type} value={form[key]} onChange={e=>{setForm({...form,[key]:e.target.value});setErrors({...errors,[key]:""});}} style={{width:"100%",boxSizing:"border-box",background:"rgba(255,255,255,0.05)",border:errors[key]?"1px solid #e07070":"1px solid rgba(192,151,106,0.28)",borderRadius:"8px",padding:"10px 12px",color:"#f0e6d0",fontSize:"0.88rem",outline:"none"}}/>
-      }
-      {errors[key] && <span style={{color:"#e07070",fontSize:"0.68rem"}}>{errors[key]}</span>}
-    </div>
-  );
-
-  return (
-    <div style={{paddingTop:"18px"}}>
-      <button onClick={onBack} style={{background:"none",border:"none",color:"#a89070",cursor:"pointer",fontSize:"0.8rem",marginBottom:"12px"}}>← Retour</button>
-      <h2 style={{color:"#e8c98a",marginBottom:"3px",fontSize:"1.1rem"}}>Finaliser ma commande</h2>
-      <p style={{color:"#7a6a55",fontSize:"0.76rem",marginBottom:"18px"}}>
-        {qty} exemplaire{qty>1?"s":""} · <strong style={{color:"#e8c98a"}}>{total} €</strong> · Livraison à partir du 01/10/2026
-      </p>
-
-      <div style={{fontSize:"0.68rem",color:"#a89070",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"12px"}}>Vos coordonnées</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 10px"}}>{fi("prenom","Prénom")}{fi("nom","Nom")}</div>
-      {fi("email","E-mail","email")}{fi("tel","Téléphone","tel")}{fi("adresse","Adresse de livraison","text",{ta:true})}
-
-      <div style={{background:"rgba(232,201,138,0.06)",border:"1px solid rgba(232,201,138,0.18)",borderRadius:"12px",padding:"14px",margin:"16px 0",textAlign:"center"}}>
-        <div style={{fontSize:"0.7rem",color:"#a89070",marginBottom:"6px"}}>Vous allez être redirigé vers le paiement sécurisé</div>
-        <div style={{display:"flex",justifyContent:"center",gap:"8px"}}>
-          {["VISA","Mastercard","CB","Apple Pay","Google Pay"].map(b=>(
-            <span key={b} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"4px",padding:"3px 7px",fontSize:"0.6rem",color:"#a89070"}}>{b}</span>
-          ))}
-        </div>
-      </div>
-
-      <button onClick={handlePay} style={{width:"100%",background:"linear-gradient(135deg,#c0976a,#a07848)",border:"none",borderRadius:"11px",padding:"15px",color:"#0e0b07",fontSize:"0.95rem",fontWeight:"700",cursor:"pointer",boxShadow:"0 4px 18px rgba(192,151,106,0.3)",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px"}}>
-        <span>🔒</span> Payer {total} € en sécurité →
-      </button>
-      <p style={{color:"#3a2c1a",fontSize:"0.66rem",textAlign:"center",marginTop:"8px"}}>
-        Paiement sécurisé par Stripe · Vos données sont protégées
-      </p>
-    </div>
-  );
-}
-
-function AdminPanel({orders, onExport, onClose}) {
-  const total = orders.reduce((s,o)=>s+Number(o.qty)*PRICE_PROMO,0);
-  const qty = orders.reduce((s,o)=>s+Number(o.qty),0);
-  return (
-    <div style={{paddingTop:"20px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}}>
-        <h2 style={{color:"#e8c98a",margin:0,fontSize:"1.1rem"}}>Tableau de bord</h2>
-        <button onClick={onClose} style={{background:"none",border:"none",color:"#a89070",cursor:"pointer",fontSize:"0.78rem"}}>Fermer ×</button>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",marginBottom:"14px"}}>
-        {[[orders.length,"commandes"],[qty,"exemplaires"],[total.toFixed(2)+" €","encaissé"]].map(([v,l])=>(
-          <div key={l} style={{background:"rgba(232,201,138,0.07)",border:"1px solid rgba(232,201,138,0.18)",borderRadius:"9px",padding:"11px",textAlign:"center"}}>
-            <div style={{fontSize:"1.3rem",color:"#e8c98a",fontWeight:"700"}}>{v}</div>
-            <div style={{fontSize:"0.6rem",color:"#a89070",textTransform:"uppercase",marginTop:"2px"}}>{l}</div>
-          </div>
-        ))}
-      </div>
-      {orders.length===0
-        ? <p style={{color:"#a89070",textAlign:"center",fontStyle:"italic",padding:"16px 0"}}>Aucune commande.</p>
-        : <>
-          <button onClick={onExport} style={{width:"100%",background:"rgba(192,151,106,0.09)",border:"1px solid rgba(192,151,106,0.28)",borderRadius:"8px",color:"#c0976a",padding:"9px",cursor:"pointer",fontSize:"0.78rem",marginBottom:"12px"}}>⬇ Exporter CSV</button>
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.7rem",color:"#c8b898"}}>
-              <thead><tr style={{borderBottom:"1px solid rgba(192,151,106,0.22)"}}>
-                {["Date","Nom","Email","Tél","Adresse","Qté","Total"].map(h=><th key={h} style={{padding:"5px 6px",textAlign:"left",color:"#c0976a",fontWeight:"600",whiteSpace:"nowrap"}}>{h}</th>)}
-              </tr></thead>
-              <tbody>{orders.map((o,i)=>(
-                <tr key={i} style={{borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
-                  <td style={{padding:"5px 6px",whiteSpace:"nowrap"}}>{o.date}</td>
-                  <td style={{padding:"5px 6px",whiteSpace:"nowrap"}}>{o.prenom} {o.nom}</td>
-                  <td style={{padding:"5px 6px"}}>{o.email}</td>
-                  <td style={{padding:"5px 6px"}}>{o.tel}</td>
-                  <td style={{padding:"5px 6px",maxWidth:"90px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.adresse}</td>
-                  <td style={{padding:"5px 6px",textAlign:"center"}}>{o.qty}</td>
-                  <td style={{padding:"5px 6px",whiteSpace:"nowrap"}}>{(o.qty*PRICE_PROMO).toFixed(2)}€</td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
-        </>
-      }
-    </div>
-  );
-}
 
 function App() {
   const [view, setView] = React.useState("home");
   const [qty, setQty] = React.useState(1);
   const [successData, setSuccessData] = React.useState(null);
   const [orders, setOrders] = React.useState([]);
-  const [adminPwd, setAdminPwd] = React.useState("");
-  const [adminUnlocked, setAdminUnlocked] = React.useState(false);
-  const [adminError, setAdminError] = React.useState("");
+
 
   React.useEffect(()=>{
     (async()=>{ try{ const r=await storage.get("orders"); if(r?.value) setOrders(JSON.parse(r.value)); }catch{} })();
   },[]);
-
-  const exportCSV = () => {
-    const h=["Date","Prénom","Nom","Email","Téléphone","Adresse","Quantité","Total €"];
-    const rows=orders.map(o=>[o.date,o.prenom,o.nom,o.email,o.tel,`"${o.adresse}"`,o.qty,(o.qty*PRICE_PROMO).toFixed(2)]);
-    const csv=[h,...rows].map(r=>r.join(";")).join("\n");
-    const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"})); a.download="precommandes.csv"; a.click();
-  };
 
   const total = (qty*PRICE_PROMO).toFixed(2);
 
@@ -343,9 +194,7 @@ function App() {
         <div style={{fontSize:"0.66rem",color:"#5a4a38",marginTop:"2px",fontStyle:"italic"}}>Julien Malaval</div>
       </div>
       <div style={{width:"100%",maxWidth:"480px",padding:"0 16px"}}>{children}</div>
-      <div style={{marginTop:"40px"}}>
-        <span onClick={()=>setView("admin")} style={{color:"#161009",fontSize:"0.5rem",cursor:"pointer",userSelect:"none"}}>⬤</span>
-      </div>
+      
     </div>
   );
 
@@ -386,58 +235,27 @@ function App() {
             </div>
           ))}
         </div>
-        <div style={{background:"rgba(255,255,255,0.028)",border:"1px solid rgba(192,151,106,0.18)",borderRadius:"12px",padding:"16px",marginBottom:"10px"}}>
-          <div style={{fontSize:"0.63rem",color:"#a89070",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"11px",textAlign:"center"}}>Nombre d'exemplaires</div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"18px",marginBottom:"14px"}}>
-            <button onClick={()=>setQty(Math.max(1,qty-1))} style={{width:"34px",height:"34px",borderRadius:"50%",border:"1px solid rgba(192,151,106,0.36)",background:"rgba(255,255,255,0.04)",color:"#e8c98a",fontSize:"1.2rem",cursor:"pointer"}}>−</button>
-            <span style={{color:"#e8c98a",fontSize:"1.55rem",fontWeight:"700",minWidth:"30px",textAlign:"center"}}>{qty}</span>
-            <button onClick={()=>setQty(qty+1)} style={{width:"34px",height:"34px",borderRadius:"50%",border:"1px solid rgba(192,151,106,0.36)",background:"rgba(255,255,255,0.04)",color:"#e8c98a",fontSize:"1.2rem",cursor:"pointer"}}>+</button>
-          </div>
-          <button onClick={()=>setView("form")} style={{width:"100%",background:"linear-gradient(135deg,#c0976a,#a07848)",border:"none",borderRadius:"11px",padding:"14px",color:"#0e0b07",fontSize:"0.95rem",fontWeight:"700",cursor:"pointer",boxShadow:"0 4px 18px rgba(192,151,106,0.3)"}}>
-            Commander {qty} exemplaire{qty>1?"s":""} — {total} € →
+        <div style={{background:"rgba(255,255,255,0.028)",border:"1px solid rgba(192,151,106,0.18)",borderRadius:"12px",padding:"22px",marginBottom:"10px",textAlign:"center"}}>
+          <button onClick={()=>{ window.location.href="https://buy.stripe.com/4gMaEXdcd7Qs4dGbUZ14400"; }} style={{width:"100%",background:"linear-gradient(135deg,#c0976a,#a07848)",border:"none",borderRadius:"11px",padding:"16px",color:"#0e0b07",fontSize:"1rem",fontWeight:"700",cursor:"pointer",fontFamily:"Georgia,serif",boxShadow:"0 4px 18px rgba(192,151,106,0.3)",marginBottom:"12px"}}>
+            🔒 Commander — Paiement sécurisé →
           </button>
+          <div style={{fontSize:"0.72rem",color:"#a89070",fontStyle:"italic",lineHeight:"1.5"}}>
+            Le choix du nombre d'exemplaires et la saisie de vos coordonnées se font sur la page suivante
+          </div>
         </div>
         <div style={{fontSize:"0.63rem",color:"#4a3a25",textAlign:"center"}}>Paiement sécurisé · Aucun frais cachés · Livraison par courrier</div>
       </div>
     </Shell>
   );
 
-  if (view==="form") return <Shell><PaymentForm qty={qty} total={total} onBack={()=>setView("home")}/></Shell>;
-
-  if (view==="success") return (
-    <Shell>
-      <div style={{textAlign:"center",paddingTop:"50px"}}>
-        <div style={{fontSize:"2.2rem",marginBottom:"11px",color:"#e8c98a"}}>✦</div>
-        <h2 style={{color:"#e8c98a",fontSize:"1.25rem",marginBottom:"9px"}}>Commande confirmée !</h2>
-        <p style={{color:"#b0a090",lineHeight:"1.7",marginBottom:"6px"}}>Merci <strong style={{color:"#e8c98a"}}>{successData?.prenom}</strong>, votre paiement a été accepté.</p>
-        <p style={{color:"#b0a090",fontSize:"0.84rem",marginBottom:"24px"}}>Un récapitulatif sera envoyé à <strong style={{color:"#c0976a"}}>{successData?.email}</strong>. Votre exemplaire sera expédié le <strong style={{color:"#e8c98a"}}>01/10/2026</strong>.</p>
-        <div style={{background:"rgba(143,202,143,0.07)",border:"1px solid rgba(143,202,143,0.2)",borderRadius:"11px",padding:"13px",marginBottom:"26px",fontSize:"0.8rem",color:"#8fca8f",lineHeight:"1.6"}}>
-          {qty} exemplaire{qty>1?"s":""} · {total} € payé · {successData?.adresse?.split("\n")?.[0]}
-        </div>
-        <button onClick={()=>{setView("home");setQty(1);setSuccessData(null);}} style={{background:"rgba(192,151,106,0.1)",border:"1px solid rgba(192,151,106,0.3)",borderRadius:"9px",padding:"10px 22px",color:"#c0976a",cursor:"pointer",fontSize:"0.82rem"}}>Retour à l'accueil</button>
-      </div>
-    </Shell>
-  );
-
-  if (view==="admin") {
-    if (!adminUnlocked) return (
-      <Shell>
-        <div style={{paddingTop:"50px",textAlign:"center"}}>
-          <div style={{fontSize:"0.65rem",color:"#c0976a",textTransform:"uppercase",letterSpacing:"0.12em",marginBottom:"16px"}}>Espace auteur</div>
-          <input type="password" placeholder="Mot de passe" value={adminPwd}
-            onChange={e=>{setAdminPwd(e.target.value);setAdminError("");}}
-            onKeyDown={e=>e.key==="Enter"&&(adminPwd==="mordagne2026"?setAdminUnlocked(true):setAdminError("Incorrect"))}
-            style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(192,151,106,0.28)",borderRadius:"8px",padding:"11px 14px",color:"#f0e6d0",fontSize:"0.95rem",outline:"none",width:"160px",textAlign:"center"}}/>
-          {adminError && <div style={{color:"#e07070",fontSize:"0.72rem",marginTop:"6px"}}>{adminError}</div>}
-          <br/>
-          <button onClick={()=>adminPwd==="mordagne2026"?setAdminUnlocked(true):setAdminError("Incorrect")} style={{marginTop:"11px",background:"rgba(192,151,106,0.13)",border:"1px solid rgba(192,151,106,0.35)",borderRadius:"8px",padding:"8px 18px",color:"#e8c98a",cursor:"pointer"}}>Entrer</button>
-          <br/>
-          <button onClick={()=>setView("home")} style={{background:"none",border:"none",color:"#3a2c1a",cursor:"pointer",marginTop:"12px",fontSize:"0.72rem"}}>← Retour</button>
-        </div>
-      </Shell>
-    );
-    return <Shell><AdminPanel orders={orders} onExport={exportCSV} onClose={()=>{setView("home");setAdminUnlocked(false);setAdminPwd("");}}/></Shell>;
+  if (view==="form") {
+    const base = "https://buy.stripe.com/4gMaEXdcd7Qs4dGbUZ14400";
+    const params = new URLSearchParams({ quantity: String(qty) });
+    window.location.href = `${base}?${params.toString()}`;
+    return null;
   }
+
+  
   return null;
 }
 
